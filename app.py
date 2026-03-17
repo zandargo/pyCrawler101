@@ -20,7 +20,7 @@ import pandas as pd
 import streamlit as st
 
 from scrapers import (
-    CathoScraper, GlassdoorScraper, GupyScraper, IndeedScraper, JobPost, VagasScraper,
+    CathoScraper, GupyScraper, IndeedScraper, JobPost, VagasScraper,
     WeWorkRemotelyScraper, RemoteOKScraper, ArcScraper, FlexJobsScraper,
     CadCrowdScraper, WellfoundScraper, DailyRemoteScraper,
 )
@@ -227,7 +227,6 @@ with st.sidebar:
     use_indeed = st.checkbox("🟣 Indeed Brasil", value=True,  help="Playwright + stealth. May require CAPTCHA workarounds.")
     use_vagas  = st.checkbox("🔴 Vagas.com.br",  value=True,  help="HTML scraping via requests + BeautifulSoup.")
     use_catho  = st.checkbox("🟠 Catho",         value=False, help="Playwright + stealth. Slow – enable if needed.")
-    use_glassdoor = st.checkbox("🟢 Glassdoor",    value=False, help="Playwright + stealth. May require CAPTCHA workarounds.")
 
     st.markdown('<div class="section-title">🌍 Remote</div>', unsafe_allow_html=True)
     use_remote = st.checkbox("Enable Remote Sites", value=False, help="Show job sites that focus on remote/worldwide positions.")
@@ -285,7 +284,6 @@ SCRAPER_MAP: dict[str, tuple[type, str]] = {
     "indeed":          (IndeedScraper,         "Indeed Brasil"),
     "vagas":           (VagasScraper,          "Vagas.com.br"),
     "catho":           (CathoScraper,          "Catho"),
-    "glassdoor":       (GlassdoorScraper,      "Glassdoor"),
     "weworkremotely":  (WeWorkRemotelyScraper,  "We Work Remotely"),
     "remoteok":        (RemoteOKScraper,        "Remote OK"),
     "arc":             (ArcScraper,            "Arc.dev"),
@@ -340,7 +338,6 @@ if search_clicked:
         if use_indeed:         selected.append("indeed")
         if use_vagas:          selected.append("vagas")
         if use_catho:          selected.append("catho")
-        if use_glassdoor:      selected.append("glassdoor")
         if use_weworkremotely: selected.append("weworkremotely")
         if use_remoteok:       selected.append("remoteok")
         if use_arc:            selected.append("arc")
