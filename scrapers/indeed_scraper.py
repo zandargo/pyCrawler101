@@ -172,11 +172,15 @@ class IndeedScraper(BaseScraper):
                             '[data-testid="myJobsStateDate"], .date, [class*="date"]'
                         )
                     )
-                    description = self._safe_text(
-                        card.locator(
-                            '[data-testid="job-snippet"], .job-snippet, [class*="snippet"]'
-                        )
-                    )
+                    description = ""
+                    for _desc_sel in [
+                        '[data-testid="job-snippet"]',
+                        ".job-snippet",
+                        ".jobsearch-SerpJobCard-snippet",
+                    ]:
+                        description = self._safe_text(card.locator(_desc_sel))
+                        if description:
+                            break
 
                     jobs.append(
                         JobPost(

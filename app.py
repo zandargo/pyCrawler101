@@ -259,8 +259,8 @@ with st.sidebar:
     st.markdown('<div class="section-title">Options</div>', unsafe_allow_html=True)
     max_results = st.slider(
         "Max results per site",
-        min_value=5,
-        max_value=50,
+        min_value=10,
+        max_value=200,
         value=20,
         step=5,
         help="Limit the number of results fetched from each source.",
@@ -418,7 +418,7 @@ if st.session_state.results_df is not None and not st.session_state.results_df.e
     # Filter controls
     # ------------------------------------------------------------------
     st.markdown('<div class="section-title">Filters</div>', unsafe_allow_html=True)
-    filter_cols = st.columns([3, 3, 1])
+    filter_cols = st.columns([3, 3, 3])
 
     with filter_cols[0]:
         all_cities = sorted(df_full["location"].dropna().unique().tolist())
@@ -430,11 +430,31 @@ if st.session_state.results_df is not None and not st.session_state.results_df.e
         source_options = ["All sources"] + all_sources
         selected_source = st.selectbox("Filter by source", source_options)
 
+    with filter_cols[2]:
+        # Vertical spacer to align the toggle with the select boxes
+        st.markdown("<div style='height:1.85rem'></div>", unsafe_allow_html=True)
+        require_in_description = st.toggle(
+            "Description must match requirements",
+            value=False,
+            help=(
+                "When enabled, only jobs whose description contains at least one "
+                "of the searched requirements are shown."
+            ),
+        )
+
     df_view = df_full.copy()
     if selected_city != "All cities":
         df_view = df_view[df_view["location"] == selected_city]
     if selected_source != "All sources":
         df_view = df_view[df_view["source"] == selected_source]
+    if require_in_description:
+        raw_reqs = last.get("requirements", "")
+        tokens = [t.strip().lower() for t in raw_reqs.replace(",", " ").split() if t.strip()]
+        if tokens:
+            mask = df_view["description"].str.lower().apply(
+                lambda desc: any(tok in desc for tok in tokens)
+            )
+            df_view = df_view[mask]
 
     # ------------------------------------------------------------------
     # Metrics
