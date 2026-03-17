@@ -5,9 +5,17 @@ Run: streamlit run app.py
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import logging
+import sys
 from datetime import datetime
+
+# On Windows, set the ProactorEventLoop policy at process startup so that
+# every new event loop (including those created internally by Playwright's
+# sync_playwright) uses ProactorEventLoop, which supports subprocess creation.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 import pandas as pd
 import streamlit as st
 
@@ -219,7 +227,7 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    search_clicked = st.button("🔍 Search Jobs", type="primary", use_container_width=True)
+    search_clicked = st.button("🔍 Search Jobs", type="primary", width='stretch')
 
     st.markdown("---")
     st.caption(
@@ -383,7 +391,7 @@ if st.session_state.results_df is not None and not st.session_state.results_df.e
 
     st.dataframe(
         df_view,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         height=520,
         column_config={
