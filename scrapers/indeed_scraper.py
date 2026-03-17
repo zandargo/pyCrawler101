@@ -168,10 +168,21 @@ class IndeedScraper(BaseScraper):
                         )
                     )
 
-                    # Description: lives in the paired slider_sub_item sibling,
-                    # not inside slider_item itself.
+                    # Description: full content lives in .jobsearch-JobComponent-description.
+                    # Collect all matching elements and join with newlines to preserve
+                    # internal structure. Search inside the paired slider_sub_item first,
+                    # then fall back to the page-level detail panel (auto-opened card),
+                    # then to the belowJobSnippet snippet.
                     description = ""
+                    _desc_containers = []
                     if idx < len(sub_items):
+                        _desc_containers = sub_items[idx].locator(".jobsearch-JobComponent-description").all()
+                    if not _desc_containers:
+                        _desc_containers = page.locator(".jobsearch-JobComponent-description").all()
+                    if _desc_containers:
+                        _parts = [el.inner_text().strip() for el in _desc_containers]
+                        description = "\n".join(p for p in _parts if p)
+                    if not description and idx < len(sub_items):
                         description = self._safe_text(
                             sub_items[idx].locator('[data-testid="belowJobSnippet"]')
                         )
