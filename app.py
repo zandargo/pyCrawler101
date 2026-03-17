@@ -19,7 +19,7 @@ if sys.platform == "win32":
 import pandas as pd
 import streamlit as st
 
-from scrapers import CathoScraper, GupyScraper, IndeedScraper, JobPost, VagasScraper
+from scrapers import CathoScraper, GlassdoorScraper, GupyScraper, IndeedScraper, JobPost, VagasScraper
 from utils.export import export_to_excel
 
 # ---------------------------------------------------------------------------
@@ -139,7 +139,8 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .badge-gupy    { background: rgba(0,122,255,0.15); color:#60A5FA; border:1px solid rgba(0,122,255,0.3); }
 .badge-indeed  { background: rgba(37,99,235,0.15); color:#818CF8; border:1px solid rgba(37,99,235,0.3); }
 .badge-vagas   { background: rgba(220,38,38,0.15); color:#F87171; border:1px solid rgba(220,38,38,0.3); }
-.badge-catho   { background: rgba(234,88,12,0.15); color:#FB923C; border:1px solid rgba(234,88,12,0.3); }
+.badge-catho      { background: rgba(234,88,12,0.15); color:#FB923C; border:1px solid rgba(234,88,12,0.3); }
+.badge-glassdoor  { background: rgba(0,157,61,0.15);  color:#4ADE80; border:1px solid rgba(0,157,61,0.3); }
 
 /* ── Export button ───────────────────────────────────────────────────────── */
 [data-testid="stDownloadButton"] > button {
@@ -213,8 +214,15 @@ with st.sidebar:
     st.markdown('<div class="section-title">Job Sites</div>', unsafe_allow_html=True)
     use_gupy   = st.checkbox("🔵 Gupy",         value=True,  help="Uses public Gupy REST API – most reliable.")
     use_indeed = st.checkbox("🟣 Indeed Brasil", value=True,  help="Playwright + stealth. May require CAPTCHA workarounds.")
+    indeed_remote = st.checkbox(
+        "↳ 🌍 Remote worldwide (Indeed)",
+        value=False,
+        help="Search remote jobs globally on indeed.com instead of br.indeed.com. Location field is ignored.",
+        disabled=not use_indeed,
+    )
     use_vagas  = st.checkbox("🔴 Vagas.com.br",  value=True,  help="HTML scraping via requests + BeautifulSoup.")
     use_catho  = st.checkbox("🟠 Catho",         value=False, help="Playwright + stealth. Slow – enable if needed.")
+    use_glassdoor = st.checkbox("🟢 Glassdoor",    value=False, help="Playwright + stealth. May require CAPTCHA workarounds.")
 
     st.markdown('<div class="section-title">Options</div>', unsafe_allow_html=True)
     max_results = st.slider(
@@ -241,10 +249,11 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 SCRAPER_MAP: dict[str, tuple[type, str]] = {
-    "gupy":   (GupyScraper,   "Gupy"),
-    "indeed": (IndeedScraper, "Indeed Brasil"),
-    "vagas":  (VagasScraper,  "Vagas.com.br"),
-    "catho":  (CathoScraper,  "Catho"),
+    "gupy":       (GupyScraper,      "Gupy"),
+    "indeed":     (IndeedScraper,    "Indeed Brasil"),
+    "vagas":      (VagasScraper,     "Vagas.com.br"),
+    "catho":      (CathoScraper,     "Catho"),
+    "glassdoor":  (GlassdoorScraper, "Glassdoor"),
 }
 
 
@@ -253,13 +262,14 @@ def _run_scraper_in_thread(
     query: str,
     location: str,
     max_results: int,
+    **kwargs,
 ) -> list[JobPost]:
     """
     Run a scraper in a dedicated thread to avoid conflicts with
     Streamlit's internal asyncio event loop (Playwright creates its own loop).
     """
     scraper = scraper_cls()
-    return scraper.scrape(query, location, max_results)
+    return scraper.scrape(query, location, max_results, **kwargs)
 
 
 def _jobs_to_dataframe(jobs: list[JobPost]) -> pd.DataFrame:
@@ -287,10 +297,11 @@ if search_clicked:
         st.warning("Please enter at least one requirement (degree, skill, or job title).")
     else:
         selected: list[str] = []
-        if use_gupy:   selected.append("gupy")
-        if use_indeed: selected.append("indeed")
-        if use_vagas:  selected.append("vagas")
-        if use_catho:  selected.append("catho")
+        if use_gupy:       selected.append("gupy")
+        if use_indeed:     selected.append("indeed")
+        if use_vagas:      selected.append("vagas")
+        if use_catho:      selected.append("catho")
+        if use_glassdoor:  selected.append("glassdoor")
 
         if not selected:
             st.warning("Please select at least one job site in the sidebar.")
@@ -306,6 +317,9 @@ if search_clicked:
                 progress_bar.progress(progress_pct, text=f"Searching **{label}**…")
 
                 try:
+                    extra_kwargs = {}
+                    if key == "indeed" and indeed_remote:
+                        extra_kwargs["remote"] = True
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                         future = executor.submit(
                             _run_scraper_in_thread,
@@ -313,6 +327,7 @@ if search_clicked:
                             requirements.strip(),
                             location.strip(),
                             max_results,
+                            **extra_kwargs,
                         )
                         jobs = future.result(timeout=90)
                     all_jobs.extend(jobs)

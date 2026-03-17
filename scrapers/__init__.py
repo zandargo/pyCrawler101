@@ -3,6 +3,7 @@ from .gupy_scraper import GupyScraper
 from .indeed_scraper import IndeedScraper
 from .vagas_scraper import VagasScraper
 from .catho_scraper import CathoScraper
+from .glassdoor_scraper import GlassdoorScraper
 
 __all__ = [
     "BaseScraper",
@@ -11,4 +12,5 @@ __all__ = [
     "IndeedScraper",
     "VagasScraper",
     "CathoScraper",
+    "GlassdoorScraper",
 ]

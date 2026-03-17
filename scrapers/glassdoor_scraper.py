@@ -20,47 +20,39 @@ from .base_scraper import BaseScraper, JobPost
 logger = logging.getLogger(__name__)
 
 
-class IndeedScraper(BaseScraper):
+class GlassdoorScraper(BaseScraper):
     """
-    Playwright-based scraper for Indeed Brasil (br.indeed.com).
+    Playwright-based scraper for Glassdoor Brasil (glassdoor.com.br).
     Uses stealth mode to reduce bot-detection fingerprints.
 
-    NOTE: Respects Indeed's rate limits – one page per session,
-    with a polite delay before interacting with the DOM.
+    NOTE: Glassdoor may display a sign-in modal; this scraper attempts
+    to dismiss it automatically. Rate-limit politely.
     """
 
-    SOURCE = "Indeed Brasil"
-    BASE_URL = "https://br.indeed.com/jobs"
-    BASE_URL_REMOTE = "https://www.indeed.com/jobs"
-    # Indeed's internal remote-job filter GUID
-    _REMOTE_PARAM = "032b3046-06a3-4876-8dfd-474eb5e7ed11"
+    SOURCE = "Glassdoor"
+    BASE_URL = "https://www.glassdoor.com.br/Vaga/vagas.htm"
+
+    # Selectors – Glassdoor's React SPA; may need periodic updates
+    _CARD_SELECTORS = [
+        'li[data-test="jobListing"]',
+        "li.react-job-listing",
+        '[data-id="job-listing-item"]',
+    ]
 
     def scrape(
         self,
         query: str,
         location: str,
         max_results: int = 20,
-        remote: bool = False,
     ) -> List[JobPost]:
         jobs: List[JobPost] = []
 
-        if remote:
-            base_url = self.BASE_URL_REMOTE
-            url = (
-                f"{base_url}"
-                f"?q={quote_plus(query)}"
-                f"&l="
-                f"&remotejob={self._REMOTE_PARAM}"
-                f"&sort=date"
-            )
-        else:
-            base_url = self.BASE_URL
-            url = (
-                f"{base_url}"
-                f"?q={quote_plus(query)}"
-                f"&l={quote_plus(location)}"
-                f"&sort=date"
-            )
+        url = (
+            f"{self.BASE_URL}"
+            f"?sc.keyword={quote_plus(query)}"
+            f"&locKeyword={quote_plus(location)}"
+            f"&sortBy=date_desc"
+        )
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
@@ -72,28 +64,18 @@ class IndeedScraper(BaseScraper):
                     "--disable-blink-features=AutomationControlled",
                 ],
             )
-            if remote:
-                locale = "en-US"
-                timezone_id = "America/New_York"
-                accept_lang = "en-US,en;q=0.9"
-            else:
-                locale = "pt-BR"
-                timezone_id = "America/Sao_Paulo"
-                accept_lang = "pt-BR,pt;q=0.9,en;q=0.8"
-
             context = browser.new_context(
                 user_agent=self.user_agent,
-                locale=locale,
-                timezone_id=timezone_id,
+                locale="pt-BR",
+                timezone_id="America/Sao_Paulo",
                 viewport={"width": 1366, "height": 768},
-                extra_http_headers={"Accept-Language": accept_lang},
+                extra_http_headers={"Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8"},
             )
             page = context.new_page()
 
             if _HAS_STEALTH and _STEALTH is not None:
                 _STEALTH.apply_stealth_sync(page)
 
-            # Patch navigator.webdriver manually as a safety net
             page.add_init_script(
                 "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
             )
@@ -101,52 +83,53 @@ class IndeedScraper(BaseScraper):
             try:
                 page.goto(url, timeout=30_000, wait_until="domcontentloaded")
             except PlaywrightTimeout:
-                logger.error("Indeed: page load timed out for %s", url)
+                logger.error("Glassdoor: page load timed out for %s", url)
                 browser.close()
                 return jobs
 
             self.sleep(2, 4)
 
-            # Dismiss cookie / consent banners
+            # Dismiss sign-in / cookie modals
             for selector in [
+                'button[data-test="modal-exit"]',
+                "button.modal_closeIcon",
+                'button[alt="Fechar"]',
+                "button:has-text('Fechar')",
+                "button:has-text('Close')",
+                "#onetrust-accept-btn-handler",
                 "button:has-text('Aceitar')",
                 "button:has-text('Accept')",
-                "#onetrust-accept-btn-handler",
             ]:
                 try:
                     btn = page.locator(selector).first
                     if btn.is_visible(timeout=2_000):
                         btn.click()
-                        self.sleep(1, 2)
+                        self.sleep(0.8, 1.5)
                         break
                 except Exception:
                     pass
 
-            # Job card selectors (Indeed updates these periodically)
-            CARD_SELECTORS = [
-                '[data-testid="slider_item"]',
-                ".job_seen_beacon",
-                ".result",
-            ]
+            # Locate job cards
             card_locator = None
-            for sel in CARD_SELECTORS:
+            for sel in self._CARD_SELECTORS:
                 loc = page.locator(sel)
                 if loc.count() > 0:
                     card_locator = loc
+                    logger.info("Glassdoor: using card selector '%s'", sel)
                     break
 
             if card_locator is None:
-                logger.warning("Indeed: no job cards found on %s", url)
+                logger.warning("Glassdoor: no job cards found on %s", url)
                 browser.close()
                 return jobs
 
             cards = card_locator.all()
-            logger.info("Indeed: found %d cards", len(cards))
+            logger.info("Glassdoor: found %d cards", len(cards))
 
             for card in cards[:max_results]:
                 try:
                     title_el = card.locator(
-                        '[data-testid="jobTitle"] a, .jobTitle a, h2 a'
+                        '[data-test="job-title"], .jobTitle, a[data-test="job-title"]'
                     )
                     title = self._safe_text(title_el)
                     if not title:
@@ -154,27 +137,26 @@ class IndeedScraper(BaseScraper):
 
                     link = self._safe_attr(title_el, "href")
                     if link and not link.startswith("http"):
-                        link_base = "https://www.indeed.com" if remote else "https://br.indeed.com"
-                        link = f"{link_base}{link}"
+                        link = f"https://www.glassdoor.com.br{link}"
 
                     company = self._safe_text(
                         card.locator(
-                            '[data-testid="company-name"], .companyName, [class*="company"]'
+                            '[data-test="employer-name"], .employerName, [class*="EmployerProfile"]'
                         )
                     )
                     location_text = self._safe_text(
                         card.locator(
-                            '[data-testid="text-location"], .companyLocation, [class*="location"]'
+                            '[data-test="location"], .location, [class*="location"]'
                         )
                     )
                     date_text = self._safe_text(
                         card.locator(
-                            '[data-testid="myJobsStateDate"], .date, [class*="date"]'
+                            '[data-test="job-age"], .listing-age, [class*="jobAge"]'
                         )
                     )
                     description = self._safe_text(
                         card.locator(
-                            '[data-testid="job-snippet"], .job-snippet, [class*="snippet"]'
+                            '[data-test="job-description"], .jobDescriptionContent, [class*="jobDescription"]'
                         )
                     )
 
@@ -191,7 +173,7 @@ class IndeedScraper(BaseScraper):
                         )
                     )
                 except Exception as exc:
-                    logger.warning("Indeed: error parsing card – %s", exc)
+                    logger.warning("Glassdoor: error parsing card – %s", exc)
 
             browser.close()
 
