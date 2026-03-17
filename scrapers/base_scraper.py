@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
+import re
 import time
 import random
 import logging
@@ -71,6 +72,13 @@ class BaseScraper(ABC):
             return value.strip() if value else default
         except Exception:
             return default
+
+    @staticmethod
+    def _strip_html(html: str) -> str:
+        """Remove HTML tags and collapse whitespace."""
+        text = re.sub(r"<[^>]+>", " ", html)
+        text = re.sub(r"\s+", " ", text)
+        return text.strip()
 
     @abstractmethod
     def scrape(

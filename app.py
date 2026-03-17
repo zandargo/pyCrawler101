@@ -19,7 +19,11 @@ if sys.platform == "win32":
 import pandas as pd
 import streamlit as st
 
-from scrapers import CathoScraper, GlassdoorScraper, GupyScraper, IndeedScraper, JobPost, VagasScraper
+from scrapers import (
+    CathoScraper, GlassdoorScraper, GupyScraper, IndeedScraper, JobPost, VagasScraper,
+    WeWorkRemotelyScraper, RemoteOKScraper, ArcScraper, FlexJobsScraper,
+    CadCrowdScraper, WellfoundScraper, DailyRemoteScraper,
+)
 from utils.export import export_to_excel
 
 # ---------------------------------------------------------------------------
@@ -141,6 +145,13 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .badge-vagas   { background: rgba(220,38,38,0.15); color:#F87171; border:1px solid rgba(220,38,38,0.3); }
 .badge-catho      { background: rgba(234,88,12,0.15); color:#FB923C; border:1px solid rgba(234,88,12,0.3); }
 .badge-glassdoor  { background: rgba(0,157,61,0.15);  color:#4ADE80; border:1px solid rgba(0,157,61,0.3); }
+.badge-weworkremotely { background: rgba(124,58,237,0.15); color:#A78BFA; border:1px solid rgba(124,58,237,0.3); }
+.badge-remoteok { background: rgba(20,184,166,0.15); color:#2DD4BF; border:1px solid rgba(20,184,166,0.3); }
+.badge-arc      { background: rgba(245,158,11,0.15); color:#FCD34D; border:1px solid rgba(245,158,11,0.3); }
+.badge-flexjobs { background: rgba(239,68,68,0.15);  color:#FCA5A5; border:1px solid rgba(239,68,68,0.3); }
+.badge-cadcrowd { background: rgba(16,185,129,0.15); color:#6EE7B7; border:1px solid rgba(16,185,129,0.3); }
+.badge-wellfound { background: rgba(99,102,241,0.15); color:#A5B4FC; border:1px solid rgba(99,102,241,0.3); }
+.badge-dailyremote { background: rgba(236,72,153,0.15); color:#F9A8D4; border:1px solid rgba(236,72,153,0.3); }
 
 /* ── Export button ───────────────────────────────────────────────────────── */
 [data-testid="stDownloadButton"] > button {
@@ -214,15 +225,36 @@ with st.sidebar:
     st.markdown('<div class="section-title">Job Sites</div>', unsafe_allow_html=True)
     use_gupy   = st.checkbox("🔵 Gupy",         value=True,  help="Uses public Gupy REST API – most reliable.")
     use_indeed = st.checkbox("🟣 Indeed Brasil", value=True,  help="Playwright + stealth. May require CAPTCHA workarounds.")
-    indeed_remote = st.checkbox(
-        "↳ 🌍 Remote worldwide (Indeed)",
-        value=False,
-        help="Search remote jobs globally on indeed.com instead of br.indeed.com. Location field is ignored.",
-        disabled=not use_indeed,
-    )
     use_vagas  = st.checkbox("🔴 Vagas.com.br",  value=True,  help="HTML scraping via requests + BeautifulSoup.")
     use_catho  = st.checkbox("🟠 Catho",         value=False, help="Playwright + stealth. Slow – enable if needed.")
     use_glassdoor = st.checkbox("🟢 Glassdoor",    value=False, help="Playwright + stealth. May require CAPTCHA workarounds.")
+
+    st.markdown('<div class="section-title">🌍 Remote</div>', unsafe_allow_html=True)
+    use_remote = st.checkbox("Enable Remote Sites", value=False, help="Show job sites that focus on remote/worldwide positions.")
+
+    if use_remote:
+        indeed_remote = st.checkbox(
+            "↳ 🟣 Indeed (Remote worldwide)",
+            value=False,
+            help="Search remote jobs globally on indeed.com instead of br.indeed.com. Location field is ignored.",
+            disabled=not use_indeed,
+        )
+        use_weworkremotely = st.checkbox("↳ 🟪 We Work Remotely", value=True,  help="HTML scraping via requests + BeautifulSoup.")
+        use_remoteok       = st.checkbox("↳ 🩵 Remote OK",         value=True,  help="Public JSON API – very reliable.")
+        use_arc            = st.checkbox("↳ 🟡 Arc.dev",           value=False, help="Playwright + stealth.")
+        use_flexjobs       = st.checkbox("↳ 🔴 FlexJobs",          value=False, help="Playwright + stealth. Note: full listings require a FlexJobs subscription.")
+        use_cadcrowd       = st.checkbox("↳ 🟢 Cad Crowd",         value=False, help="HTML scraping. Focused on CAD/design/engineering roles.")
+        use_wellfound      = st.checkbox("↳ 🟣 Wellfound",         value=False, help="Playwright + stealth (formerly AngelList Talent).")
+        use_dailyremote    = st.checkbox("↳ 🩷 DailyRemote",       value=True,  help="HTML scraping via requests + BeautifulSoup.")
+    else:
+        indeed_remote      = False
+        use_weworkremotely = False
+        use_remoteok       = False
+        use_arc            = False
+        use_flexjobs       = False
+        use_cadcrowd       = False
+        use_wellfound      = False
+        use_dailyremote    = False
 
     st.markdown('<div class="section-title">Options</div>', unsafe_allow_html=True)
     max_results = st.slider(
@@ -249,11 +281,18 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 SCRAPER_MAP: dict[str, tuple[type, str]] = {
-    "gupy":       (GupyScraper,      "Gupy"),
-    "indeed":     (IndeedScraper,    "Indeed Brasil"),
-    "vagas":      (VagasScraper,     "Vagas.com.br"),
-    "catho":      (CathoScraper,     "Catho"),
-    "glassdoor":  (GlassdoorScraper, "Glassdoor"),
+    "gupy":            (GupyScraper,           "Gupy"),
+    "indeed":          (IndeedScraper,         "Indeed Brasil"),
+    "vagas":           (VagasScraper,          "Vagas.com.br"),
+    "catho":           (CathoScraper,          "Catho"),
+    "glassdoor":       (GlassdoorScraper,      "Glassdoor"),
+    "weworkremotely":  (WeWorkRemotelyScraper,  "We Work Remotely"),
+    "remoteok":        (RemoteOKScraper,        "Remote OK"),
+    "arc":             (ArcScraper,            "Arc.dev"),
+    "flexjobs":        (FlexJobsScraper,       "FlexJobs"),
+    "cadcrowd":        (CadCrowdScraper,       "Cad Crowd"),
+    "wellfound":       (WellfoundScraper,      "Wellfound"),
+    "dailyremote":     (DailyRemoteScraper,    "DailyRemote"),
 }
 
 
@@ -297,11 +336,18 @@ if search_clicked:
         st.warning("Please enter at least one requirement (degree, skill, or job title).")
     else:
         selected: list[str] = []
-        if use_gupy:       selected.append("gupy")
-        if use_indeed:     selected.append("indeed")
-        if use_vagas:      selected.append("vagas")
-        if use_catho:      selected.append("catho")
-        if use_glassdoor:  selected.append("glassdoor")
+        if use_gupy:           selected.append("gupy")
+        if use_indeed:         selected.append("indeed")
+        if use_vagas:          selected.append("vagas")
+        if use_catho:          selected.append("catho")
+        if use_glassdoor:      selected.append("glassdoor")
+        if use_weworkremotely: selected.append("weworkremotely")
+        if use_remoteok:       selected.append("remoteok")
+        if use_arc:            selected.append("arc")
+        if use_flexjobs:       selected.append("flexjobs")
+        if use_cadcrowd:       selected.append("cadcrowd")
+        if use_wellfound:      selected.append("wellfound")
+        if use_dailyremote:    selected.append("dailyremote")
 
         if not selected:
             st.warning("Please select at least one job site in the sidebar.")
