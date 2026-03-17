@@ -123,27 +123,27 @@ class IndeedScraper(BaseScraper):
                     pass
 
             # Job card selectors (Indeed updates these periodically)
-            CARD_SELECTORS = [
-                '[data-testid="slider_item"]',
-                ".job_seen_beacon",
-                ".result",
-            ]
-            card_locator = None
-            for sel in CARD_SELECTORS:
-                loc = page.locator(sel)
-                if loc.count() > 0:
-                    card_locator = loc
-                    break
+            # slider_item  = the visible job card (title, company, location)
+            # slider_sub_item = paired sibling with snippet (belowJobSnippet)
+            cards = page.locator('[data-testid="slider_item"]').all()
+            sub_items = page.locator('[data-testid="slider_sub_item"]').all()
 
-            if card_locator is None:
+            # Fallback for older Indeed layouts
+            if not cards:
+                for sel in [".job_seen_beacon", ".result"]:
+                    loc = page.locator(sel)
+                    if loc.count() > 0:
+                        cards = loc.all()
+                        break
+
+            if not cards:
                 logger.warning("Indeed: no job cards found on %s", url)
                 browser.close()
                 return jobs
 
-            cards = card_locator.all()
             logger.info("Indeed: found %d cards", len(cards))
 
-            for card in cards[:max_results]:
+            for idx, card in enumerate(cards[:max_results]):
                 try:
                     title_el = card.locator(
                         '[data-testid="jobTitle"] a, .jobTitle a, h2 a'
@@ -159,28 +159,52 @@ class IndeedScraper(BaseScraper):
 
                     company = self._safe_text(
                         card.locator(
-                            '[data-testid="company-name"], .companyName, [class*="company"]'
+                            '[data-testid="company-name"], .companyName'
                         )
                     )
                     location_text = self._safe_text(
                         card.locator(
-                            '[data-testid="text-location"], .companyLocation, [class*="location"]'
+                            '[data-testid="text-location"], .companyLocation'
                         )
                     )
-                    date_text = self._safe_text(
-                        card.locator(
-                            '[data-testid="myJobsStateDate"], .date, [class*="date"]'
-                        )
-                    )
+
+                    # Description: lives in the paired slider_sub_item sibling,
+                    # not inside slider_item itself.
                     description = ""
-                    for _desc_sel in [
-                        '[data-testid="job-snippet"]',
-                        ".job-snippet",
-                        ".jobsearch-SerpJobCard-snippet",
+                    if idx < len(sub_items):
+                        description = self._safe_text(
+                            sub_items[idx].locator('[data-testid="belowJobSnippet"]')
+                        )
+                    # Fallback for legacy layouts where snippet is inside the card
+                    if not description:
+                        for _desc_sel in [
+                            '[data-testid="job-snippet"]',
+                            ".job-snippet",
+                        ]:
+                            description = self._safe_text(card.locator(_desc_sel))
+                            if description:
+                                break
+
+                    # Date posted: Indeed no longer renders this on listing
+                    # cards. Try legacy selectors; value will be empty if absent.
+                    date_text = ""
+                    for _date_sel in [
+                        '[data-testid="myJobsStateDate"]',
+                        '[data-testid*="date"]',
+                        ".date",
                     ]:
-                        description = self._safe_text(card.locator(_desc_sel))
-                        if description:
+                        date_text = self._safe_text(card.locator(_date_sel))
+                        if date_text:
                             break
+                    if not date_text and idx < len(sub_items):
+                        for _date_sel in [
+                            '[data-testid="myJobsStateDate"]',
+                            '[data-testid*="date"]',
+                            ".date",
+                        ]:
+                            date_text = self._safe_text(sub_items[idx].locator(_date_sel))
+                            if date_text:
+                                break
 
                     jobs.append(
                         JobPost(
