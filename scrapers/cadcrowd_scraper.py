@@ -13,18 +13,18 @@ logger = logging.getLogger(__name__)
 class CadCrowdScraper(BaseScraper):
     """
     requests + BeautifulSoup scraper for Cad Crowd freelance job listings.
-    URL: https://www.cadcrowd.com/freelance-design-jobs/search?query={query}
+    URL: https://www.cadcrowd.com/projects
     Focused on CAD, engineering design, and related technical roles.
     """
 
     SOURCE = "Cad Crowd"
     BASE_URL = "https://www.cadcrowd.com"
-    SEARCH_URL = "https://www.cadcrowd.com/freelance-design-jobs/search"
+    SEARCH_URL = "https://www.cadcrowd.com/projects"
 
     def scrape(self, query: str, location: str = "", max_results: int = 20) -> List[JobPost]:
         jobs: List[JobPost] = []
 
-        url = f"{self.SEARCH_URL}?query={quote_plus(query)}"
+        url = self.SEARCH_URL
 
         headers = {
             "User-Agent": self.user_agent,
@@ -38,44 +38,43 @@ class CadCrowdScraper(BaseScraper):
             response = requests.get(url, headers=headers, timeout=30)
             response.raise_for_status()
         except requests.RequestException as exc:
-            logger.error("Cad Crowd request failed: %s", exc)
-            raise
+            logger.warning("Cad Crowd request failed: %s", exc)
+            return jobs
 
         soup = BeautifulSoup(response.content, "lxml")
 
-        job_items = (
-            soup.select("div.job-listing-item")
-            or soup.select("div[class*='job-item']")
-            or soup.select("li[class*='job']")
-            or soup.select("article[class*='job']")
-            or soup.select(".project-list .project-item")
-            or soup.select("div.panel")
-        )
+        # Cad Crowd currently exposes contests/projects cards rather than a direct
+        # keyword search endpoint. Parse contest links and filter by query locally.
+        job_items = soup.select("a[href*='/contest/']")
 
         logger.info("Cad Crowd: found %d listings", len(job_items))
 
-        for item in job_items[:max_results]:
+        q_tokens = [tok for tok in query.lower().split() if tok]
+
+        for item in job_items:
+            if len(jobs) >= max_results:
+                break
             try:
-                title_el = item.select_one("h2 a, h3 a, a.job-title, a[class*='title']")
-                title = title_el.get_text(strip=True) if title_el else ""
-                if not title:
-                    h_tag = item.select_one("h2, h3, h4")
-                    title = h_tag.get_text(strip=True) if h_tag else ""
+                href = item.get("href", "")
+                if "/contest/" not in href:
+                    continue
+
+                title = item.get_text(" ", strip=True)
                 if not title:
                     continue
 
-                link = ""
-                if title_el:
-                    href = title_el.get("href", "")
-                    link = f"{self.BASE_URL}{href}" if href.startswith("/") else href
+                if q_tokens and not any(tok in title.lower() for tok in q_tokens):
+                    continue
 
-                company_el = item.select_one("[class*='company'], [class*='client'], .posted-by")
-                company = company_el.get_text(strip=True) if company_el else ""
+                link = f"{self.BASE_URL}{href}" if href.startswith("/") else href
 
-                budget_el = item.select_one("[class*='budget'], [class*='price'], [class*='rate']")
-                description = budget_el.get_text(strip=True) if budget_el else ""
+                container = item.find_parent(["li", "article", "div"]) or item
+                desc_el = container.select_one("p") if hasattr(container, "select_one") else None
+                description = desc_el.get_text(" ", strip=True) if desc_el else ""
 
-                date_el = item.select_one("time, [class*='date'], [class*='posted']")
+                company = "Cad Crowd Client"
+
+                date_el = container.select_one("time, [class*='date'], [class*='posted']") if hasattr(container, "select_one") else None
                 date_posted = ""
                 if date_el:
                     date_posted = date_el.get("datetime", date_el.get_text(strip=True))[:10]

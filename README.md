@@ -8,7 +8,7 @@ A modern, ethical web scraper that collects job listings from major Brazilian jo
 
 | Feature | Details |
 |---|---|
-| **Multi-source scraping** | Gupy (API), Indeed Brasil, Vagas.com.br, Catho |
+| **Multi-source scraping** | Gupy (API), Indeed Brasil, Vagas.com.br, Catho, LinkedIn |
 | **Smart filtering** | Filter results by city / location and source site |
 | **Modern UI** | Dark-themed Streamlit app with gradient accents |
 | **Export to Excel** | Styled `.xlsx` export — table stays visible afterward |
@@ -32,7 +32,8 @@ pyCrawler101/
 │   ├── gupy_scraper.py      # Gupy public REST API
 │   ├── indeed_scraper.py    # Indeed Brasil – Playwright + stealth
 │   ├── vagas_scraper.py     # Vagas.com.br – requests + BeautifulSoup
-│   └── catho_scraper.py     # Catho – Playwright + stealth
+│   ├── catho_scraper.py     # Catho – Playwright + stealth
+│   └── linkedin_scraper.py  # LinkedIn guest endpoint – requests + BeautifulSoup
 │
 └── utils/
     ├── __init__.py
@@ -136,6 +137,13 @@ Uses **requests + BeautifulSoup** (HTML scraping). Vagas.com.br is server-render
 
 ### Catho
 Uses **Playwright + playwright-stealth** similar to Indeed. Disabled by default due to slower load times — enable in the sidebar when needed.
+
+### LinkedIn
+Uses LinkedIn's **public guest jobs endpoint** (`/jobs-guest/jobs/api/seeMoreJobPostings/search`) with `requests + BeautifulSoup`. Supports location-based searches and remote-only filtering.
+
+Includes:
+- **Retry with exponential backoff** for transient HTTP failures / throttling.
+- Optional **full description mode** that fetches each job's details endpoint (slower, richer text).
 
 ---
 

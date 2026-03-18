@@ -2,7 +2,7 @@ import logging
 from typing import List
 from urllib.parse import quote
 
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout, Error as PlaywrightError
 
 try:
     from playwright_stealth import Stealth as _Stealth
@@ -66,6 +66,10 @@ class CathoScraper(BaseScraper):
                 page.goto(url, timeout=30_000, wait_until="domcontentloaded")
             except PlaywrightTimeout:
                 logger.error("Catho: page load timed out for %s", url)
+                browser.close()
+                return jobs
+            except PlaywrightError as exc:
+                logger.warning("Catho: page navigation unavailable for %s (%s)", url, str(exc).splitlines()[0])
                 browser.close()
                 return jobs
 

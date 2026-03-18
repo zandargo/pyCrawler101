@@ -11,6 +11,7 @@ from .flexjobs_scraper import FlexJobsScraper
 from .cadcrowd_scraper import CadCrowdScraper
 from .wellfound_scraper import WellfoundScraper
 from .dailyremote_scraper import DailyRemoteScraper
+from .linkedin_scraper import LinkedInScraper
 
 __all__ = [
     "BaseScraper",
@@ -27,4 +28,5 @@ __all__ = [
     "CadCrowdScraper",
     "WellfoundScraper",
     "DailyRemoteScraper",
+    "LinkedInScraper",
 ]

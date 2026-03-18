@@ -22,7 +22,7 @@ import streamlit as st
 from scrapers import (
     CathoScraper, GupyScraper, IndeedScraper, JobPost, VagasScraper,
     WeWorkRemotelyScraper, RemoteOKScraper, ArcScraper, FlexJobsScraper,
-    CadCrowdScraper, WellfoundScraper, DailyRemoteScraper,
+    CadCrowdScraper, WellfoundScraper, DailyRemoteScraper, LinkedInScraper,
 )
 from utils.export import export_to_excel
 
@@ -152,6 +152,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .badge-cadcrowd { background: rgba(16,185,129,0.15); color:#6EE7B7; border:1px solid rgba(16,185,129,0.3); }
 .badge-wellfound { background: rgba(99,102,241,0.15); color:#A5B4FC; border:1px solid rgba(99,102,241,0.3); }
 .badge-dailyremote { background: rgba(236,72,153,0.15); color:#F9A8D4; border:1px solid rgba(236,72,153,0.3); }
+.badge-linkedin { background: rgba(59,130,246,0.15); color:#93C5FD; border:1px solid rgba(59,130,246,0.3); }
 
 /* ── Export button ───────────────────────────────────────────────────────── */
 [data-testid="stDownloadButton"] > button {
@@ -227,6 +228,7 @@ with st.sidebar:
     use_indeed = st.checkbox("🟣 Indeed Brasil", value=True,  help="Playwright + stealth. May require CAPTCHA workarounds.")
     use_vagas  = st.checkbox("🔴 Vagas.com.br",  value=True,  help="HTML scraping via requests + BeautifulSoup.")
     use_catho  = st.checkbox("🟠 Catho",         value=False, help="Playwright + stealth. Slow – enable if needed.")
+    use_linkedin = st.checkbox("🔷 LinkedIn",     value=False, help="Public LinkedIn guest jobs endpoint via requests + BeautifulSoup.")
 
     st.markdown('<div class="section-title">🌍 Remote</div>', unsafe_allow_html=True)
     use_remote = st.checkbox("Enable Remote Sites", value=False, help="Show job sites that focus on remote/worldwide positions.")
@@ -238,6 +240,12 @@ with st.sidebar:
             help="Search remote jobs globally on indeed.com instead of br.indeed.com. Location field is ignored.",
             disabled=not use_indeed,
         )
+        linkedin_remote = st.checkbox(
+            "↳ 🔷 LinkedIn (Remote worldwide)",
+            value=False,
+            help="Search LinkedIn remote jobs globally. Location field is ignored.",
+            disabled=not use_linkedin,
+        )
         use_weworkremotely = st.checkbox("↳ 🟪 We Work Remotely", value=True,  help="HTML scraping via requests + BeautifulSoup.")
         use_remoteok       = st.checkbox("↳ 🩵 Remote OK",         value=True,  help="Public JSON API – very reliable.")
         use_arc            = st.checkbox("↳ 🟡 Arc.dev",           value=False, help="Playwright + stealth.")
@@ -247,6 +255,7 @@ with st.sidebar:
         use_dailyremote    = st.checkbox("↳ 🩷 DailyRemote",       value=True,  help="HTML scraping via requests + BeautifulSoup.")
     else:
         indeed_remote      = False
+        linkedin_remote    = False
         use_weworkremotely = False
         use_remoteok       = False
         use_arc            = False
@@ -263,6 +272,12 @@ with st.sidebar:
         value=20,
         step=5,
         help="Limit the number of results fetched from each source.",
+    )
+    linkedin_fetch_description = st.checkbox(
+        "LinkedIn: fetch full descriptions (slower)",
+        value=False,
+        help="Calls LinkedIn job details endpoint per result for richer descriptions.",
+        disabled=not use_linkedin,
     )
 
     st.markdown("---")
@@ -291,6 +306,7 @@ SCRAPER_MAP: dict[str, tuple[type, str]] = {
     "cadcrowd":        (CadCrowdScraper,       "Cad Crowd"),
     "wellfound":       (WellfoundScraper,      "Wellfound"),
     "dailyremote":     (DailyRemoteScraper,    "DailyRemote"),
+    "linkedin":        (LinkedInScraper,       "LinkedIn"),
 }
 
 
@@ -326,6 +342,11 @@ def _jobs_to_dataframe(jobs: list[JobPost]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _compact_error_message(exc: Exception) -> str:
+    """Return a single-line exception summary for clean logs/UI warnings."""
+    return str(exc).splitlines()[0].strip() if str(exc) else exc.__class__.__name__
+
+
 # ---------------------------------------------------------------------------
 # Search logic
 # ---------------------------------------------------------------------------
@@ -338,6 +359,7 @@ if search_clicked:
         if use_indeed:         selected.append("indeed")
         if use_vagas:          selected.append("vagas")
         if use_catho:          selected.append("catho")
+        if use_linkedin:       selected.append("linkedin")
         if use_weworkremotely: selected.append("weworkremotely")
         if use_remoteok:       selected.append("remoteok")
         if use_arc:            selected.append("arc")
@@ -361,8 +383,14 @@ if search_clicked:
 
                 try:
                     extra_kwargs = {}
+                    timeout_seconds = 90
                     if key == "indeed" and indeed_remote:
                         extra_kwargs["remote"] = True
+                    if key == "linkedin" and linkedin_remote:
+                        extra_kwargs["remote"] = True
+                    if key == "linkedin" and linkedin_fetch_description:
+                        extra_kwargs["fetch_description"] = True
+                        timeout_seconds = 180
                     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                         future = executor.submit(
                             _run_scraper_in_thread,
@@ -372,14 +400,15 @@ if search_clicked:
                             max_results,
                             **extra_kwargs,
                         )
-                        jobs = future.result(timeout=90)
+                        jobs = future.result(timeout=timeout_seconds)
                     all_jobs.extend(jobs)
                     logger.info("%s returned %d results", label, len(jobs))
                 except concurrent.futures.TimeoutError:
-                    errors.append(f"**{label}** timed out (90 s). Try fewer sites or increase timeout.")
+                    errors.append(f"**{label}** timed out ({timeout_seconds} s). Try fewer sites or reduce max results.")
                 except Exception as exc:
-                    logger.exception("Scraper %s failed", label)
-                    errors.append(f"**{label}** failed: {exc}")
+                    short_error = _compact_error_message(exc)
+                    logger.warning("Scraper %s failed: %s", label, short_error)
+                    errors.append(f"**{label}** failed: {short_error}")
 
             progress_bar.progress(1.0, text="Done!")
             progress_bar.empty()

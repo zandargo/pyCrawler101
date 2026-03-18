@@ -2,7 +2,7 @@ import logging
 from typing import List
 from urllib.parse import quote_plus
 
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout, Error as PlaywrightError
 
 try:
     from playwright_stealth import Stealth as _Stealth
@@ -58,10 +58,24 @@ class FlexJobsScraper(BaseScraper):
                 "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
             )
 
-            try:
-                page.goto(url, timeout=30_000, wait_until="domcontentloaded")
-            except PlaywrightTimeout:
-                logger.error("FlexJobs: page load timed out for %s", url)
+            loaded = False
+            last_error = ""
+            for wait_until in ["domcontentloaded", "commit"]:
+                try:
+                    page.goto(url, timeout=30_000, wait_until=wait_until)
+                    loaded = True
+                    break
+                except PlaywrightTimeout:
+                    last_error = f"timeout with wait_until={wait_until}"
+                except PlaywrightError as exc:
+                    # Keep only the first line to avoid verbose Playwright call logs.
+                    last_error = str(exc).splitlines()[0]
+
+            if not loaded:
+                if last_error:
+                    logger.warning("FlexJobs: navigation unavailable for %s (%s)", url, last_error)
+                else:
+                    logger.warning("FlexJobs: navigation unavailable for %s", url)
                 browser.close()
                 return jobs
 
