@@ -35,6 +35,7 @@ class WeWorkRemotelyScraper(BaseScraper):
     DETAIL_ENRICH_BUDGET_SECONDS = 35.0
     DETAIL_PAGE_TIMEOUT_MS = 12_000
     DETAIL_SELECTOR_TIMEOUT_MS = 3_000
+    DETAIL_BLOCK_ABORT_THRESHOLD = 2
 
     def _get_job_anchor(self, item):
         anchor = item if getattr(item, "name", "") == "a" else item.select_one("a[href*='/remote-jobs/']")
@@ -76,10 +77,39 @@ class WeWorkRemotelyScraper(BaseScraper):
 
     @staticmethod
     def _extract_description(item) -> str:
-        description_el = item.select_one(".lis-container__job__content__description")
-        if description_el:
-            return description_el.get_text(" ", strip=True)
+        description_selectors = (
+            ".lis-container__job__content__description",
+            ".new-listing__description",
+            ".new-listing__company-headline",
+            ".new-listing__categories",
+        )
+
+        for selector in description_selectors:
+            description_el = item.select_one(selector)
+            if description_el:
+                text = description_el.get_text(" ", strip=True)
+                if text:
+                    return text
+
+        # Detail pages sometimes expose richer text in meta tags.
+        for meta_selector in (
+            "meta[name='description']",
+            "meta[property='og:description']",
+        ):
+            meta_el = item.select_one(meta_selector)
+            if meta_el:
+                text = (meta_el.get("content") or "").strip()
+                if text:
+                    return text
+
         return ""
+
+    @staticmethod
+    def _looks_like_block_page(soup: BeautifulSoup) -> bool:
+        title = (soup.title.get_text(" ", strip=True) if soup.title else "").lower()
+        text = soup.get_text(" ", strip=True).lower()
+        blocked_markers = ("just a moment", "cloudflare", "attention required", "captcha")
+        return any(marker in title or marker in text for marker in blocked_markers)
 
     @staticmethod
     def _extract_posted_date(item) -> str:
@@ -104,6 +134,7 @@ class WeWorkRemotelyScraper(BaseScraper):
             return
 
         deadline = time.monotonic() + self.DETAIL_ENRICH_BUDGET_SECONDS
+        consecutive_blocked_pages = 0
 
         try:
             with sync_playwright() as pw:
@@ -156,6 +187,22 @@ class WeWorkRemotelyScraper(BaseScraper):
                         self.sleep(0.4, 0.9)
 
                         soup = BeautifulSoup(page.content(), "lxml")
+                        if self._looks_like_block_page(soup):
+                            consecutive_blocked_pages += 1
+                            logger.info(
+                                "We Work Remotely detail page blocked by anti-bot protection for %s",
+                                job.link,
+                            )
+                            if consecutive_blocked_pages >= self.DETAIL_BLOCK_ABORT_THRESHOLD:
+                                logger.info(
+                                    "We Work Remotely detail enrichment stopped after %d consecutive blocked pages",
+                                    consecutive_blocked_pages,
+                                )
+                                break
+                            continue
+
+                        consecutive_blocked_pages = 0
+
                         if not job.description:
                             job.description = self._extract_description(soup)
                         if not job.date_posted:
@@ -209,7 +256,7 @@ class WeWorkRemotelyScraper(BaseScraper):
         }
 
         search_url = f"{self.SEARCH_URL}?term={quote_plus(query)}"
-        search_url_alt = f"{self.SEARCH_URL_ALT}/search?term={quote_plus(query)}"
+        search_url_alt = f"{self.SEARCH_URL_ALT}?term={quote_plus(query)}"
         fallback_url = self.SEARCH_URL_ALT
 
         response = (
