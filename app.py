@@ -224,9 +224,9 @@ with st.sidebar:
     )
 
     st.markdown('<div class="section-title">Job Sites</div>', unsafe_allow_html=True)
-    use_gupy   = st.checkbox("🔵 Gupy",         value=True,  help="Uses public Gupy REST API – most reliable.")
-    use_indeed = st.checkbox("🟣 Indeed Brasil", value=True,  help="Playwright + stealth. May require CAPTCHA workarounds.")
-    use_vagas  = st.checkbox("🔴 Vagas.com.br",  value=True,  help="HTML scraping via requests + BeautifulSoup.")
+    use_gupy   = st.checkbox("🔵 Gupy",         value=False,  help="Uses public Gupy REST API – most reliable.")
+    use_indeed = st.checkbox("🟣 Indeed Brasil", value=False,  help="Playwright + stealth. May require CAPTCHA workarounds.")
+    use_vagas  = st.checkbox("🔴 Vagas.com.br",  value=False,  help="HTML scraping via requests + BeautifulSoup.")
     use_catho  = st.checkbox("🟠 Catho",         value=False, help="Playwright + stealth. Slow – enable if needed.")
     use_linkedin = st.checkbox("🔷 LinkedIn",     value=False, help="Public LinkedIn guest jobs endpoint via requests + BeautifulSoup.")
 
@@ -246,13 +246,13 @@ with st.sidebar:
             help="Search LinkedIn remote jobs globally. Location field is ignored.",
             disabled=not use_linkedin,
         )
-        use_weworkremotely = st.checkbox("↳ 🟪 We Work Remotely", value=True,  help="HTML scraping via requests + BeautifulSoup.")
-        use_remoteok       = st.checkbox("↳ 🩵 Remote OK",         value=True,  help="Public JSON API – very reliable.")
+        use_weworkremotely = st.checkbox("↳ 🟪 We Work Remotely", value=False,  help="HTML scraping via requests + BeautifulSoup.")
+        use_remoteok       = st.checkbox("↳ 🩵 Remote OK",         value=False,  help="Public JSON API – very reliable.")
         use_arc            = st.checkbox("↳ 🟡 Arc.dev",           value=False, help="Playwright + stealth.")
         use_flexjobs       = st.checkbox("↳ 🔴 FlexJobs",          value=False, help="Playwright + stealth. Note: full listings require a FlexJobs subscription.")
         use_cadcrowd       = st.checkbox("↳ 🟢 Cad Crowd",         value=False, help="HTML scraping. Focused on CAD/design/engineering roles.")
         use_wellfound      = st.checkbox("↳ 🟣 Wellfound",         value=False, help="Playwright + stealth (formerly AngelList Talent).")
-        use_dailyremote    = st.checkbox("↳ 🩷 DailyRemote",       value=True,  help="HTML scraping via requests + BeautifulSoup.")
+        use_dailyremote    = st.checkbox("↳ 🩷 DailyRemote",       value=False,  help="HTML scraping via requests + BeautifulSoup.")
     else:
         indeed_remote      = False
         linkedin_remote    = False
